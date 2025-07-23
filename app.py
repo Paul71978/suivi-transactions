@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 from fpdf import FPDF
 import locale
+import os
 
 # Locale française pour les mois
 try:
@@ -18,20 +19,22 @@ except locale.Error:
 st.set_page_config(layout="wide")
 st.title("📊 Suivi des transactions clients & fournisseurs")
 
-# ----------------------- UPLOAD FICHIER -----------------------
-st.subheader("📂 Téléverse ton fichier Excel (structure identique au modèle)")
-
-uploaded_file = st.file_uploader("Dépose ton fichier ici (.xlsx)", type=["xlsx"])
-if not uploaded_file:
-    st.warning("⏳ Merci de téléverser un fichier Excel pour commencer.")
-    st.stop()
+# ----------------------- CHEMIN DU FICHIER -----------------------
+# Chemin relatif vers le fichier Excel dans le même dossier que ce script
+chemin_fichier = os.path.join(os.path.dirname(__file__), "fichier_client.xlsx")
 
 # ----------------------- CHARGEMENT DES DONNÉES -----------------------
 @st.cache_data
-def charger_donnees(uploaded):
-    return pd.read_excel(uploaded, sheet_name="Données socio-démographiques")
+def charger_donnees():
+    return pd.read_excel(chemin_fichier, sheet_name="Données socio-démographiques")
 
-df = charger_donnees(uploaded_file)
+try:
+    df = charger_donnees()
+except FileNotFoundError:
+    st.error(f"❌ Fichier non trouvé : {chemin_fichier}\n"
+             "Merci de vérifier que le fichier 'fichier_client.xlsx' est bien dans le dossier 'appli_suivi_clients'.")
+    st.stop()
+
 df["Date 1"] = pd.to_datetime(df["Date 1"], errors="coerce")
 df["Date 2"] = pd.to_datetime(df["Date 2"], errors="coerce")
 
@@ -163,7 +166,7 @@ if st.button("📥 Télécharger le PDF de la période sélectionnée"):
         solde
     )
     st.download_button(
-        label="📄 Télécharger le PDF",
+        label="Télécharger le PDF",
         data=pdf_buffer,
         file_name=f"rapport_{periode_label.replace(' ', '_').lower()}.pdf",
         mime="application/pdf"
