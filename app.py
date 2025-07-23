@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 from fpdf import FPDF
 import locale
-import os
 
 # Locale française pour les mois
 try:
@@ -19,26 +18,55 @@ except locale.Error:
 st.set_page_config(layout="wide")
 st.title("📊 Suivi des transactions clients & fournisseurs")
 
-# ----------------------- CHEMIN DU FICHIER -----------------------
-# Chemin relatif vers le fichier Excel dans le même dossier que ce script
-chemin_fichier = os.path.join(os.path.dirname(__file__), "fichier_client.xlsx")
+# ----------------------- DICTIONNAIRE IDENTIFIANTS -----------------------
+clients_mdp = {
+    "client1": "mdpclient1",
+    "client2": "mdpclient2",
+    "client3": "mdpclient3",
+}
 
-# ----------------------- CHARGEMENT DES DONNÉES -----------------------
-@st.cache_data
-def charger_donnees():
-    return pd.read_excel(chemin_fichier, sheet_name="Données socio-démographiques")
+# ----------------------- AUTHENTIFICATION -----------------------
+st.sidebar.header("🔐 Authentification client")
+client_choisi = st.sidebar.text_input("Identifiant client :")
+mdp_entre = st.sidebar.text_input("Mot de passe :", type="password")
 
+if "authentifie" not in st.session_state:
+    st.session_state["authentifie"] = False
+
+if not st.session_state["authentifie"]:
+    if st.sidebar.button("Se connecter"):
+        if client_choisi in clients_mdp and mdp_entre == clients_mdp[client_choisi]:
+            st.session_state["authentifie"] = True
+            st.session_state["client"] = client_choisi
+            st.sidebar.success("✅ Authentification réussie")
+        else:
+            st.sidebar.error("❌ Identifiants incorrects")
+    else:
+        st.warning("Veuillez vous authentifier pour accéder à l’application.")
+        st.stop()
+else:
+    st.sidebar.success(f"Connecté en tant que : {st.session_state['client']}")
+
+
+# ----------------------- UPLOAD DU FICHIER -----------------------
+st.sidebar.markdown("---")
+fichier_upload = st.sidebar.file_uploader("📤 Importez votre fichier Excel :", type=["xlsx", "xls"])
+
+if not fichier_upload:
+    st.warning("Veuillez téléverser un fichier Excel.")
+    st.stop()
+
+# ----------------------- CHARGEMENT DU FICHIER -----------------------
 try:
-    df = charger_donnees()
-except FileNotFoundError:
-    st.error(f"❌ Fichier non trouvé : {chemin_fichier}\n"
-             "Merci de vérifier que le fichier 'fichier_client.xlsx' est bien dans le dossier 'appli_suivi_clients'.")
+    df = pd.read_excel(fichier_upload, sheet_name="Données socio-démographiques")
+except Exception as e:
+    st.error(f"Erreur de chargement : {e}")
     st.stop()
 
 df["Date 1"] = pd.to_datetime(df["Date 1"], errors="coerce")
 df["Date 2"] = pd.to_datetime(df["Date 2"], errors="coerce")
 
-# ----------------------- FILTRAGE PAR PÉRIODE -----------------------
+# ----------------------- FILTRAGE PAR MOIS -----------------------
 mois_recu = df["Date 1"].dropna().dt.to_period("M")
 mois_paye = df["Date 2"].dropna().dt.to_period("M")
 mois_disponibles = sorted(set(mois_recu.tolist() + mois_paye.tolist()))
@@ -61,18 +89,17 @@ else:
     df_paye = df[filtre_paye & df["Montant payé"].notna()].copy()
     periode_label = ", ".join(selection)
 
-# ----------------------- CALCULS -----------------------
+# ----------------------- INDICATEURS -----------------------
 montant_recu_total = df_recu["Montant reçu"].sum(skipna=True)
 montant_paye_total = df_paye["Montant payé"].sum(skipna=True)
 solde = montant_recu_total - montant_paye_total
 nb_clients = df_recu["Nom du client"].nunique()
 nb_fournisseurs = df_paye["Nom du fournisseur"].nunique()
 
-# ----------------------- INDICATEURS -----------------------
 col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("💰 Montant reçu", f"{montant_recu_total:.2f} EUR")
 col2.metric("💸 Montant payé", f"{montant_paye_total:.2f} EUR")
-col3.metric("📈 Solde", f"{solde:.2f} EUR", delta=f"{solde:.2f} EUR")
+col3.metric("📈 Solde", f"{solde:.2f} EUR")
 col4.metric("👥 Clients", f"{nb_clients}")
 col5.metric("🏭 Fournisseurs", f"{nb_fournisseurs}")
 
@@ -99,7 +126,7 @@ st.pyplot(fig)
 
 # ----------------------- COMMENTAIRE -----------------------
 st.subheader("🗣️ Laissez un commentaire pour cette période")
-commentaire_client = st.text_area("Écrivez ici vos remarques ou précisions à joindre au rapport PDF :", height=150)
+commentaire_client = st.text_area("Vos remarques à joindre au rapport PDF :", height=150)
 if st.button("🗑️ Supprimer le commentaire"):
     commentaire_client = ""
     st.experimental_rerun()
@@ -139,35 +166,4 @@ def generer_pdf(periode_label, df_recu, df_paye, commentaire_client, nb_clients,
     pdf.ln(10)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, "Commentaire ajouté :", ln=True)
-    pdf.set_font("Arial", "", 12)
-    pdf.multi_cell(0, 10, commentaire_client if commentaire_client.strip() else "Aucun commentaire fourni.")
-
-    pdf.ln(10)
-    pdf.set_font("Arial", "I", 10)
-    now = pd.Timestamp.now(tz="Europe/Paris")
-    texte_generation = now.strftime("Rapport généré le %d/%m/%Y à %Hh%M.")
-    pdf.cell(0, 10, texte_generation, ln=True)
-
-    pdf_bytes = pdf.output(dest='S').encode('latin1')
-    buffer = BytesIO(pdf_bytes)
-    return buffer
-
-st.subheader("📄 Générer le rapport PDF")
-if st.button("📥 Télécharger le PDF de la période sélectionnée"):
-    pdf_buffer = generer_pdf(
-        periode_label,
-        df_recu,
-        df_paye,
-        commentaire_client,
-        nb_clients,
-        nb_fournisseurs,
-        montant_recu_total,
-        montant_paye_total,
-        solde
-    )
-    st.download_button(
-        label="Télécharger le PDF",
-        data=pdf_buffer,
-        file_name=f"rapport_{periode_label.replace(' ', '_').lower()}.pdf",
-        mime="application/pdf"
-    )
+    pdf.set
