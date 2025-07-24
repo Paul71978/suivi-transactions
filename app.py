@@ -66,15 +66,12 @@ df["Date 1"] = pd.to_datetime(df["Date 1"], errors="coerce")
 df["Date 2"] = pd.to_datetime(df["Date 2"], errors="coerce")
 
 # ----------------------- FILTRAGE PAR MOIS -----------------------
-# Extraire les périodes (mois) pour date 1 et date 2
 mois_recu = df["Date 1"].dropna().dt.to_period("M")
 mois_paye = df["Date 2"].dropna().dt.to_period("M")
 
-# Tous les mois présents, union puis tri croissant
 mois_disponibles = pd.Series(list(set(mois_recu.tolist() + mois_paye.tolist())))
 mois_disponibles = mois_disponibles.sort_values()
 
-# Labels français des mois (ex: "Juillet 2025")
 mois_labels = [m.strftime("%B %Y").capitalize() for m in mois_disponibles]
 mois_mapping = dict(zip(mois_labels, mois_disponibles))
 
@@ -101,6 +98,22 @@ solde = montant_recu_total - montant_paye_total
 nb_clients = df_recu["Nom du client"].nunique()
 nb_fournisseurs = df_paye["Nom du fournisseur"].nunique()
 
+# CSS pour modifier la taille des polices dans les métriques Streamlit
+st.markdown("""
+    <style>
+    /* Labels des indicateurs (ex: Montant reçu) */
+    div[data-testid="metric-container"] > div:nth-child(1) {
+        font-size: 24px !important;
+        font-weight: 700 !important;
+    }
+    /* Valeurs des métriques (chiffres et unité) */
+    div[data-testid="metric-container"] > div:nth-child(2) {
+        font-size: 18px !important;
+        font-weight: 600 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 col1, col2, col3, col4, col5 = st.columns(5)
 col1.metric("💰 Montant reçu", f"{montant_recu_total:.2f} EUR")
 col2.metric("💸 Montant payé", f"{montant_paye_total:.2f} EUR")
@@ -110,18 +123,14 @@ col5.metric("🏭 Fournisseurs", f"{nb_fournisseurs}")
 
 # ----------------------- GRAPHIQUE -----------------------
 df_graph = df.copy()
-# Combiner Date 1 et Date 2 en une colonne 'Mois' en timestamp (premier jour du mois)
 df_graph["Mois"] = df_graph["Date 1"].combine_first(df_graph["Date 2"]).dt.to_period("M").dt.to_timestamp()
 
-# Grouper par mois et sommer Montants reçus et payés
 graph_grouped = df_graph.groupby("Mois").agg({
     "Montant reçu": "sum",
     "Montant payé": "sum"
 }).fillna(0)
 
 graph_grouped["Solde"] = graph_grouped["Montant reçu"] - graph_grouped["Montant payé"]
-
-# Trier chronologiquement par date (index Mois)
 graph_grouped = graph_grouped.sort_index()
 
 fig, ax = plt.subplots()
