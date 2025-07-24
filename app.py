@@ -10,9 +10,13 @@ try:
     locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
 except locale.Error:
     try:
-        locale.setlocale(locale.LC_TIME, 'French_France.1252')
+        locale.setlocale(locale.LC_TIME, 'fr_FR')  # version simplifiée (Unix)
     except locale.Error:
-        pass
+        try:
+            locale.setlocale(locale.LC_TIME, 'French_France.1252')  # Windows
+        except locale.Error:
+            locale.setlocale(locale.LC_TIME, '')  # fallback sur la locale par défaut
+
 
 # ----------------------- CONFIGURATION -----------------------
 st.set_page_config(layout="wide")
