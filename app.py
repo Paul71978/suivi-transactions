@@ -17,7 +17,6 @@ except locale.Error:
         except locale.Error:
             locale.setlocale(locale.LC_TIME, '')  # fallback sur la locale par défaut
 
-
 # ----------------------- CONFIGURATION -----------------------
 st.set_page_config(layout="wide")
 st.title("📊 Suivi des transactions clients & fournisseurs")
