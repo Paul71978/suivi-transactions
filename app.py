@@ -3,21 +3,32 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from io import BytesIO
 from fpdf import FPDF
+import locale
 from datetime import datetime
 
-# Configuration
+# Locale française
+try:
+    locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
+except locale.Error:
+    try:
+        locale.setlocale(locale.LC_TIME, 'French_France.1252')
+    except locale.Error:
+        pass
+
+# ----------------------- CONFIGURATION -----------------------
 st.set_page_config(layout="wide")
 st.title("📊 Suivi des transactions clients & fournisseurs")
 
-# -------------------- Authentification --------------------
+# ----------------------- IDENTIFIANTS -----------------------
 clients_mdp = {
     "client1": "mdpclient1",
-    "client2": "mdpclient2",
-    "client3": "mdpclient3",
+    "client2": "secret123",
+    "client3": "azerty"
 }
 
-st.sidebar.header("🔐 Authentification")
-client_choisi = st.sidebar.text_input("Identifiant :")
+# ----------------------- AUTHENTIFICATION -----------------------
+st.sidebar.header("🔐 Authentification client")
+client_choisi = st.sidebar.text_input("Identifiant client :")
 mdp_entre = st.sidebar.text_input("Mot de passe :", type="password")
 
 if "authentifie" not in st.session_state:
@@ -28,148 +39,154 @@ if not st.session_state["authentifie"]:
         if client_choisi in clients_mdp and mdp_entre == clients_mdp[client_choisi]:
             st.session_state["authentifie"] = True
             st.session_state["client"] = client_choisi
-            st.sidebar.success("✅ Connexion réussie")
+            st.sidebar.success("✅ Authentification réussie")
         else:
             st.sidebar.error("❌ Identifiants incorrects")
-    st.stop()
+    else:
+        st.warning("Veuillez vous authentifier pour accéder à l’application.")
+        st.stop()
 else:
     st.sidebar.success(f"Connecté en tant que : {st.session_state['client']}")
 
-# -------------------- Upload fichier Excel --------------------
-fichier_upload = st.sidebar.file_uploader("📂 Importez votre fichier Excel :", type=["xlsx", "xls"])
+# ----------------------- UPLOAD DU FICHIER -----------------------
+st.sidebar.markdown("---")
+fichier_upload = st.sidebar.file_uploader("📤 Importez votre fichier Excel :", type=["xlsx", "xls"])
 
-if fichier_upload is not None:
-    try:
-        df = pd.read_excel(fichier_upload, sheet_name="Données socio-démographiques")
-        df["Date 1"] = pd.to_datetime(df["Date 1"], errors="coerce")
-        df["Date 2"] = pd.to_datetime(df["Date 2"], errors="coerce")
-        # Combine Date 1 et Date 2
-        df["Date"] = df["Date 1"].combine_first(df["Date 2"])
-        df = df.dropna(subset=["Date"])
-        df["Mois"] = df["Date"].dt.strftime("%B %Y")
-        df["Mois_date"] = df["Date"].dt.to_period("M").dt.to_timestamp()
-        st.session_state["df"] = df
-    except Exception as e:
-        st.error(f"Erreur lors du chargement : {e}")
-        st.stop()
-elif "df" in st.session_state:
-    df = st.session_state["df"]
-else:
-    st.warning("Veuillez importer un fichier Excel pour continuer.")
+if not fichier_upload:
+    st.warning("Veuillez téléverser un fichier Excel.")
     st.stop()
 
-# -------------------- Filtrage par mois --------------------
-mois_uniques = sorted(df["Mois"].unique(), key=lambda x: datetime.strptime(x, "%B %Y"))
-options = ["Tous les mois"] + mois_uniques
-mois_selectionnes = st.multiselect("Choisissez un ou plusieurs mois :", options, default=["Tous les mois"])
+# ----------------------- CHARGEMENT DU FICHIER -----------------------
+try:
+    df = pd.read_excel(fichier_upload, sheet_name="Données socio-démographiques")
+except Exception as e:
+    st.error(f"Erreur de chargement : {e}")
+    st.stop()
 
-if "Tous les mois" in mois_selectionnes or not mois_selectionnes:
-    df_filtre = df.copy()
-    libelle_periode = "toute la période"
+df["Date 1"] = pd.to_datetime(df["Date 1"], errors="coerce")
+df["Date 2"] = pd.to_datetime(df["Date 2"], errors="coerce")
+
+# ----------------------- FILTRAGE PAR MOIS -----------------------
+mois_recu = df["Date 1"].dropna().dt.to_period("M")
+mois_paye = df["Date 2"].dropna().dt.to_period("M")
+mois_disponibles = sorted(set(mois_recu.tolist() + mois_paye.tolist()))
+mois_labels = [m.strftime("%B %Y").capitalize() for m in mois_disponibles]
+mois_mapping = dict(zip(mois_labels, mois_disponibles))
+
+st.subheader("📅 Choisissez un ou plusieurs mois")
+options_mois = ["Toute la période"] + mois_labels
+selection = st.multiselect("Sélectionnez une ou plusieurs périodes :", options_mois, default=["Toute la période"])
+
+if "Toute la période" in selection or not selection:
+    df_recu = df[df["Montant reçu"].notna()].copy()
+    df_paye = df[df["Montant payé"].notna()].copy()
+    periode_label = "Toute la période"
 else:
-    df_filtre = df[df["Mois"].isin(mois_selectionnes)]
-    libelle_periode = ", ".join(mois_selectionnes)
+    mois_choisis = [mois_mapping[sel] for sel in selection if sel in mois_mapping]
+    filtre_recu = df["Date 1"].dt.to_period("M").isin(mois_choisis)
+    filtre_paye = df["Date 2"].dt.to_period("M").isin(mois_choisis)
+    df_recu = df[filtre_recu & df["Montant reçu"].notna()].copy()
+    df_paye = df[filtre_paye & df["Montant payé"].notna()].copy()
+    periode_label = ", ".join(selection)
 
-# -------------------- Calculs --------------------
-recu_total = df_filtre["Montant reçu"].sum()
-paye_total = df_filtre["Montant payé"].sum()
-solde = recu_total - paye_total
-nb_clients = df_filtre["Nom du client"].nunique()
-nb_fournisseurs = df_filtre["Nom du fournisseur"].nunique()
-
-# --- Ajustement manuel des indicateurs (exemple avec un plancher à 4000) ---
-# Tu peux ajuster cette logique selon ce que tu veux vraiment corriger.
-if recu_total < 4000:
-    recu_total = 4000
-
-# -------------------- Indicateurs --------------------
-st.markdown("### 🔎 Indicateurs de la période sélectionnée")
+# ----------------------- INDICATEURS -----------------------
+montant_recu_total = df_recu["Montant reçu"].sum(skipna=True)
+montant_paye_total = df_paye["Montant payé"].sum(skipna=True)
+solde = montant_recu_total - montant_paye_total
+nb_clients = df_recu["Nom du client"].nunique()
+nb_fournisseurs = df_paye["Nom du fournisseur"].nunique()
 
 col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("💰 Montant reçu", f"{recu_total:,.2f} €")
-col2.metric("💸 Montant payé", f"{paye_total:,.2f} €")
-col3.metric("📈 Solde", f"{solde:,.2f} €")
+col1.metric("💰 Montant reçu", f"{montant_recu_total:.2f} EUR")
+col2.metric("💸 Montant payé", f"{montant_paye_total:.2f} EUR")
+col3.metric("📈 Solde", f"{solde:.2f} EUR")
 col4.metric("👥 Clients", f"{nb_clients}")
 col5.metric("🏭 Fournisseurs", f"{nb_fournisseurs}")
 
-# -------------------- Graphique en courbe --------------------
-st.markdown("### 📉 Évolution mensuelle")
+# ----------------------- GRAPHIQUE -----------------------
+df_graph = df.copy()
+df_graph["Mois"] = df_graph["Date 1"].combine_first(df_graph["Date 2"]).dt.to_period("M").dt.to_timestamp()
+graph_grouped = df_graph.groupby("Mois").agg({
+    "Montant reçu": "sum",
+    "Montant payé": "sum"
+}).fillna(0)
+graph_grouped["Solde"] = graph_grouped["Montant reçu"] - graph_grouped["Montant payé"]
 
-df_grouped = (
-    df.groupby("Mois_date")[["Montant reçu", "Montant payé"]]
-    .sum()
-    .sort_index()
-    .reset_index()
-)
-df_grouped["Solde"] = df_grouped["Montant reçu"] - df_grouped["Montant payé"]
-
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.plot(df_grouped["Mois_date"], df_grouped["Montant reçu"], label="Montant reçu", marker="o", color="green")
-ax.plot(df_grouped["Mois_date"], df_grouped["Montant payé"], label="Montant payé", marker="o", color="red")
-ax.plot(df_grouped["Mois_date"], df_grouped["Solde"], label="Solde", marker="o", color="blue")
-ax.set_title("Évolution mensuelle des montants")
-ax.set_xlabel("Mois")
-ax.set_ylabel("Montant (€)")
-ax.legend()
-ax.grid(True)
-
-# Étendre l'axe X jusqu'à la dernière date de Date 1 ou Date 2
-dernier_date = max(df["Date 1"].max(), df["Date 2"].max())
-# On met l'axe x avec un buffer de 15 jours pour esthétique
-ax.set_xlim(left=df_grouped["Mois_date"].min(), right=dernier_date + pd.Timedelta(days=15))
-
+fig, ax = plt.subplots()
+graph_grouped.index = graph_grouped.index.to_series().dt.strftime('%B %Y').str.capitalize()
+graph_grouped[["Montant reçu", "Montant payé", "Solde"]].plot(kind="bar", ax=ax)
 plt.xticks(rotation=45)
+plt.xlabel("Mois")
+plt.ylabel("Montant (€)")
+plt.title("Évolution mensuelle")
+plt.tight_layout()
+
+st.subheader("📊 Évolution mensuelle")
 st.pyplot(fig)
 
-# -------------------- Commentaire --------------------
-commentaire = st.text_area("💬 Ajoutez un commentaire au rapport :")
+# ----------------------- COMMENTAIRE -----------------------
+st.subheader("🗣️ Laissez un commentaire pour cette période")
+commentaire_client = st.text_area("Vos remarques à joindre au rapport PDF :", height=150)
+if st.button("🗑️ Supprimer le commentaire"):
+    commentaire_client = ""
+    st.experimental_rerun()
 
-# -------------------- PDF --------------------
-def generer_pdf(periode, recu, paye, solde, commentaire, nb_c, nb_f, df_periode):
+# ----------------------- GÉNÉRATION PDF -----------------------
+def generer_pdf(periode_label, df_recu, df_paye, commentaire_client, nb_clients, nb_fournisseurs, montant_recu_total, montant_paye_total, solde):
     pdf = FPDF()
     pdf.add_page()
-
     pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, f"Rapport - {periode}", ln=True, align="C")
-
+    pdf.cell(0, 10, f"Rapport - {periode_label}", ln=True)
     pdf.set_font("Arial", "", 12)
-    date_rapport = datetime.now().strftime("%d/%m/%Y à %H:%M")
-    pdf.cell(0, 10, f"Date du rapport : {date_rapport}", ln=True)
-    pdf.ln(5)
+    date_rapport = datetime.today().strftime("%d/%m/%Y")
+    pdf.cell(0, 10, f"Date d'émission : {date_rapport}", ln=True)
 
-    pdf.cell(0, 10, f"Nombre de clients : {nb_c}", ln=True)
-    pdf.cell(0, 10, f"Nombre de fournisseurs : {nb_f}", ln=True)
-    pdf.cell(0, 10, f"Montant reçu : {recu:.2f} EUR", ln=True)
-    pdf.cell(0, 10, f"Montant payé : {paye:.2f} EUR", ln=True)
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, f"Nombre de clients : {nb_clients}", ln=True)
+    pdf.cell(0, 10, f"Nombre de fournisseurs : {nb_fournisseurs}", ln=True)
+    pdf.cell(0, 10, f"Montant reçu total : {montant_recu_total:.2f} EUR", ln=True)
+    pdf.cell(0, 10, f"Montant payé total : {montant_paye_total:.2f} EUR", ln=True)
     pdf.cell(0, 10, f"Solde : {solde:.2f} EUR", ln=True)
-    pdf.ln(10)
-
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Détails des transactions clients :", ln=True)
-    pdf.set_font("Arial", "", 12)
-    for _, row in df_periode.dropna(subset=["Nom du client", "Montant reçu"]).iterrows():
-        nom = str(row["Nom du client"])
-        date = row["Date"].strftime("%d/%m/%Y")
-        montant = row["Montant reçu"]
-        pdf.cell(0, 10, f"- {nom} | {date} | {montant:.2f} EUR", ln=True)
 
     pdf.ln(5)
-
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "Détails des transactions fournisseurs :", ln=True)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Détail des montants reçus par client :", ln=True)
     pdf.set_font("Arial", "", 12)
-    for _, row in df_periode.dropna(subset=["Nom du fournisseur", "Montant payé"]).iterrows():
-        nom = str(row["Nom du fournisseur"])
-        date = row["Date"].strftime("%d/%m/%Y")
-        montant = row["Montant payé"]
-        pdf.cell(0, 10, f"- {nom} | {date} | {montant:.2f} EUR", ln=True)
+    for _, row in df_recu.iterrows():
+        date_str = row["Date 1"].strftime("%d/%m/%Y") if not pd.isna(row["Date 1"]) else ""
+        montant_str = f"{row['Montant reçu']:.2f} EUR"
+        pdf.cell(0, 10, f"{row['Nom du client']} : {montant_str} le {date_str}", ln=True)
 
-    pdf.ln(10)
-    pdf.set_font("Arial", "I", 12)
-    pdf.multi_cell(0, 10, f"Commentaire :\n{commentaire}")
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 10, "Détail des montants payés par fournisseur :", ln=True)
+    pdf.set_font("Arial", "", 12)
+    for _, row in df_paye.iterrows():
+        date_str = row["Date 2"].strftime("%d/%m/%Y") if not pd.isna(row["Date 2"]) else ""
+        montant_str = f"{row['Montant payé']:.2f} EUR"
+        pdf.cell(0, 10, f"{row['Nom du fournisseur']} : {montant_str} le {date_str}", ln=True)
 
-    return pdf.output(dest='S').encode('latin-1', errors='ignore')
+    if commentaire_client:
+        pdf.ln(10)
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 10, "Commentaire ajouté :", ln=True)
+        pdf.set_font("Arial", "", 12)
+        pdf.multi_cell(0, 10, commentaire_client)
 
-if st.button("📄 Télécharger le rapport PDF"):
-    pdf_bytes = generer_pdf(libelle_periode, recu_total, paye_total, solde, commentaire, nb_clients, nb_fournisseurs, df_filtre)
-    st.download_button("📥 Télécharger le PDF", data=pdf_bytes, file_name=f"rapport_{libelle_periode.replace(' ', '_')}.pdf", mime="application/pdf")
+    return pdf.output(dest='S').encode('latin1')
+
+if st.button("📄 Générer le rapport PDF"):
+    pdf_bytes = generer_pdf(
+        periode_label,
+        df_recu,
+        df_paye,
+        commentaire_client,
+        nb_clients,
+        nb_fournisseurs,
+        montant_recu_total,
+        montant_paye_total,
+        solde
+    )
+    st.success("✅ Rapport généré avec succès.")
+    st.download_button("⬇️ Télécharger le rapport PDF", data=pdf_bytes, file_name="rapport.pdf", mime="application/pdf")
