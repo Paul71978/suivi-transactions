@@ -1,0 +1,2 @@
+export SUPABASE_URL="https://uuualzegrflxaypalcmk.supabase.co"
+export SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV1dWFsemVncmZseGF5cGFsY21rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQxMTkyNDksImV4cCI6MjA2OTY5NTI0OX0.eDffoVNLsra-dJVWxpJyYpGCOSkbFrTxGCBHNt9991w"
