@@ -18,8 +18,8 @@ except locale.Error:
         pass
 
 # -------------------- CONFIG SUPABASE --------------------
-SUPABASE_URL = "https://uuualzegrflxaypalcmk.supabase.co"  # ⬅️ À remplacer
-SUPABASE_KEY = os.getenv("SUPABASE_KEY");
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -------------------- SESSION --------------------
