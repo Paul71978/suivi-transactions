@@ -1,1 +1,3 @@
+echo "postBuild executed" > postBuild.log
 playwright install
+
