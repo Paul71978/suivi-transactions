@@ -7,6 +7,7 @@ from supabase import create_client, Client
 import bcrypt
 from datetime import datetime
 import os
+import subprocess  # <== ajouté pour lancer la commande playwright install
 
 # Locale française
 try:
@@ -16,6 +17,13 @@ except locale.Error:
         locale.setlocale(locale.LC_TIME, 'French_France.1252')
     except locale.Error:
         pass
+
+# -------------------- INSTALL PLAYWRIGHT BROWSERS --------------------
+try:
+    subprocess.run(["playwright", "install"], check=True)
+    st.write("✅ Playwright browsers installés.")
+except Exception as e:
+    st.error(f"Erreur lors de l'installation de Playwright : {e}")
 
 # -------------------- CONFIG SUPABASE --------------------
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
