@@ -6,5 +6,8 @@ openpyxl
 supabase
 bcrypt
 streamlit-cookies-manager
+reportlab
+folium
+playwright
 
 
