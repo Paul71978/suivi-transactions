@@ -7,15 +7,6 @@ from supabase import create_client, Client
 import bcrypt
 from datetime import datetime
 import os
-from streamlit_cookies_manager import EncryptedCookieManager
-
-# -------------------- COOKIES MANAGER --------------------
-cookies = EncryptedCookieManager(
-    prefix="mon_app_",
-    password=st.secrets["COOKIE_KEY"]  # clé sécurisée stockée dans secrets.toml
-)
-if not cookies.ready():
-    st.stop()
 
 # Locale française
 try:
@@ -35,11 +26,6 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
-# Si un cookie existe, on restaure la connexion
-if cookies.get("auth_email"):
-    st.session_state["authentifie"] = True
-    st.session_state["client"] = cookies.get("auth_email")
-
 # -------------------- AUTH FUNCTIONS --------------------
 def inscrire_utilisateur(email, password):
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -48,7 +34,7 @@ def inscrire_utilisateur(email, password):
         st.sidebar.error("❌ Identifiant déjà pris.")
         return
     supabase.table("users").insert({
-        "email": email,
+        "Email": email,
         "password_hash": hashed
     }).execute()
     st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
@@ -79,8 +65,6 @@ if not st.session_state["authentifie"]:
             if verifier_utilisateur(email, password):
                 st.session_state["authentifie"] = True
                 st.session_state["client"] = email
-                cookies["auth_email"] = email  # Sauvegarde dans cookie
-                cookies.save()
                 st.sidebar.success(f"✅ Connecté : {email}")
             else:
                 st.sidebar.error("❌ Identifiants incorrects.")
@@ -90,17 +74,10 @@ else:
     if st.sidebar.button("Se déconnecter"):
         st.session_state["authentifie"] = False
         st.session_state["client"] = None
-        cookies["auth_email"] = ""  # Efface le cookie
-        cookies.save()
         st.experimental_rerun()
 
 # ----------------------- PAGE NAVIGATION -----------------------
-page = st.sidebar.selectbox("📄 Choisissez une page :", [
-    "Accueil",
-    "Filtrer par client/fournisseur",
-    "Carte des clients",
-    "Veille concurrentielle"
-])
+page = st.sidebar.selectbox("📄 Choisissez une page :", ["Accueil", "Filtrer par client/fournisseur", "Carte des clients", "Veille concurrentielle"])
 
 # ----------------------- CHARGEMENT DU FICHIER -----------------------
 fichier_upload = st.file_uploader("📂 Importez votre fichier Excel", type=["xls", "xlsx"])
@@ -121,7 +98,6 @@ df["Date 2"] = pd.to_datetime(df["Date 2"], errors='coerce')
 
 if page == "Accueil":
     st.title("Page principale")
-
 
     # ----------------------- FILTRAGE PAR MOIS -----------------------
     mois_recu = df["Date 1"].dropna().dt.to_period("M")
