@@ -12,5 +12,6 @@ playwright
 streamlit-folium
 beautifulsoup4
 unidecode
+langdetect
 
 
