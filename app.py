@@ -7,7 +7,7 @@ from supabase import create_client, Client
 import bcrypt
 from datetime import datetime
 import os
-import subprocess  # <== ajouté pour lancer la commande playwright install
+import subprocess
 
 # Locale française
 try:
@@ -18,43 +18,59 @@ except locale.Error:
     except locale.Error:
         pass
 
-# -------------------- INSTALL PLAYWRIGHT BROWSERS --------------------
+# Installer Playwright browsers
 try:
     subprocess.run(["playwright", "install"], check=True)
     st.write("✅ Playwright browsers installés.")
 except Exception as e:
     st.error(f"Erreur lors de l'installation de Playwright : {e}")
 
-# -------------------- CONFIG SUPABASE --------------------
+# Configuration Supabase
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# -------------------- SESSION --------------------
+# Session
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
-# -------------------- AUTH FUNCTIONS --------------------
+# Fonctions d'authentification
 def inscrire_utilisateur(email, password):
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    # Vérifie si email existe déjà
     exist = supabase.table("users").select("email").eq("email", email).execute()
+    if exist.error:
+        st.sidebar.error(f"Erreur vérification utilisateur : {exist.error.message}")
+        return
     if exist.data and len(exist.data) > 0:
         st.sidebar.error("❌ Identifiant déjà pris.")
         return
-    supabase.table("users").insert({
-        "Email": email,
+
+    # Insère nouvel utilisateur
+    response = supabase.table("users").insert({
+        "email": email,
         "password_hash": hashed
     }).execute()
-    st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
+
+    if response.error:
+        st.sidebar.error(f"Erreur création compte : {response.error.message}")
+    elif response.status_code != 201:
+        st.sidebar.error(f"Erreur création compte, status {response.status_code}: {response.data}")
+    else:
+        st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
 
 def verifier_utilisateur(email, password):
     result = supabase.table("users").select("password_hash").eq("email", email).execute()
+    if result.error:
+        st.sidebar.error(f"Erreur lors de la connexion : {result.error.message}")
+        return False
     if not result.data or len(result.data) == 0:
         return False
     hashed = result.data[0]["password_hash"].encode("utf-8")
     return bcrypt.checkpw(password.encode("utf-8"), hashed)
 
-# -------------------- UI AUTH --------------------
+# UI Auth
 st.sidebar.title("🔐 Connexion client")
 choix = st.sidebar.radio("Action :", ["Se connecter", "Créer un compte"])
 email = st.sidebar.text_input("Identifiant")
@@ -83,6 +99,7 @@ else:
         st.session_state["authentifie"] = False
         st.session_state["client"] = None
         st.experimental_rerun()
+
 
 # ----------------------- PAGE NAVIGATION -----------------------
 page = st.sidebar.selectbox("📄 Choisissez une page :", ["Accueil", "Filtrer par client/fournisseur", "Carte des clients", "Veille concurrentielle"])
