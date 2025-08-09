@@ -1,12 +1,7 @@
 import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-from fpdf import FPDF
 import locale
 from supabase import create_client, Client
 import bcrypt
-from datetime import datetime
-import os
 import subprocess
 
 # Locale française
@@ -34,46 +29,46 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 if "authentifie" not in st.session_state:
     st.session_state["authentifie"] = False
 
-# Fonctions d'authentification
 def inscrire_utilisateur(email, password):
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    # Vérifie si email existe déjà
     exist = supabase.table("users").select("email").eq("email", email).execute()
-    if exist.error:
-        st.sidebar.error(f"Erreur vérification utilisateur : {exist.error.message}")
+    error = getattr(exist, 'error', None)
+    st.write("Exist check:", exist)
+    if error is not None:
+        st.sidebar.error(f"Erreur vérification utilisateur : {error}")
         return False
     if exist.data and len(exist.data) > 0:
         st.sidebar.error("❌ Identifiant déjà pris.")
         return False
 
-    # Insère nouvel utilisateur
     response = supabase.table("users").insert({
         "email": email,
         "password_hash": hashed
     }).execute()
-
-    if response.error:
-        st.sidebar.error(f"Erreur création compte : {response.error.message}")
+    error_insert = getattr(response, 'error', None)
+    st.write("Insert response:", response)
+    if error_insert is not None:
+        st.sidebar.error(f"Erreur création compte : {error_insert}")
         return False
-    elif response.status_code != 201:
+    if response.status_code != 201:
         st.sidebar.error(f"Erreur création compte, status {response.status_code}: {response.data}")
         return False
-    else:
-        st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
-        return True
+
+    st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
+    return True
 
 def verifier_utilisateur(email, password):
     result = supabase.table("users").select("password_hash").eq("email", email).execute()
-    if result.error:
-        st.sidebar.error(f"Erreur lors de la connexion : {result.error.message}")
+    error = getattr(result, 'error', None)
+    if error is not None:
+        st.sidebar.error(f"Erreur lors de la connexion : {error}")
         return False
     if not result.data or len(result.data) == 0:
         return False
     hashed = result.data[0]["password_hash"].encode("utf-8")
     return bcrypt.checkpw(password.encode("utf-8"), hashed)
 
-# UI Auth
 st.sidebar.title("🔐 Connexion client")
 choix = st.sidebar.radio("Action :", ["Se connecter", "Créer un compte"])
 email = st.sidebar.text_input("Identifiant")
@@ -85,7 +80,6 @@ if not st.session_state["authentifie"]:
             if email and password:
                 succes = inscrire_utilisateur(email, password)
                 if succes:
-                    # Optionnel : effacer les champs et/ou informer clairement
                     st.experimental_rerun()
             else:
                 st.sidebar.warning("Veuillez remplir les deux champs.")
