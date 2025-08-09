@@ -40,9 +40,6 @@ def inscrire_utilisateur(email, password):
 
     # Vérifie si email existe déjà
     exist = supabase.table("users").select("email").eq("email", email).execute()
-    if exist.error:
-        st.sidebar.error(f"Erreur vérification utilisateur : {exist.error.message}")
-        return
     if exist.data and len(exist.data) > 0:
         st.sidebar.error("❌ Identifiant déjà pris.")
         return
@@ -53,18 +50,13 @@ def inscrire_utilisateur(email, password):
         "password_hash": hashed
     }).execute()
 
-    if response.error:
-        st.sidebar.error(f"Erreur création compte : {response.error.message}")
-    elif response.status_code != 201:
+    if response.status_code != 201:
         st.sidebar.error(f"Erreur création compte, status {response.status_code}: {response.data}")
     else:
         st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
 
 def verifier_utilisateur(email, password):
     result = supabase.table("users").select("password_hash").eq("email", email).execute()
-    if result.error:
-        st.sidebar.error(f"Erreur lors de la connexion : {result.error.message}")
-        return False
     if not result.data or len(result.data) == 0:
         return False
     hashed = result.data[0]["password_hash"].encode("utf-8")
