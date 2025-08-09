@@ -40,10 +40,10 @@ def inscrire_utilisateur(email, password):
 
     # Vérifie si email existe déjà
     exist = supabase.table("users").select("email").eq("email", email).execute()
-    if exist.get("error"):
-        st.sidebar.error(f"Erreur vérification utilisateur : {exist['error']['message']}")
+    if exist.error:
+        st.sidebar.error(f"Erreur vérification utilisateur : {exist.error.message}")
         return False
-    if exist.get("data") and len(exist["data"]) > 0:
+    if exist.data and len(exist.data) > 0:
         st.sidebar.error("❌ Identifiant déjà pris.")
         return False
 
@@ -53,24 +53,24 @@ def inscrire_utilisateur(email, password):
         "password_hash": hashed
     }).execute()
 
-    if response.get("error"):
-        st.sidebar.error(f"Erreur création compte : {response['error']['message']}")
+    if response.error:
+        st.sidebar.error(f"Erreur création compte : {response.error.message}")
         return False
-    if "status_code" in response and response["status_code"] != 201:
-        st.sidebar.error(f"Erreur création compte, status {response['status_code']}: {response.get('data', '')}")
+    elif response.status_code != 201:
+        st.sidebar.error(f"Erreur création compte, status {response.status_code}: {response.data}")
         return False
-
-    st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
-    return True
+    else:
+        st.sidebar.success("✅ Compte créé. Veuillez vous connecter.")
+        return True
 
 def verifier_utilisateur(email, password):
     result = supabase.table("users").select("password_hash").eq("email", email).execute()
-    if result.get("error"):
-        st.sidebar.error(f"Erreur lors de la connexion : {result['error']['message']}")
+    if result.error:
+        st.sidebar.error(f"Erreur lors de la connexion : {result.error.message}")
         return False
-    if not result.get("data") or len(result["data"]) == 0:
+    if not result.data or len(result.data) == 0:
         return False
-    hashed = result["data"][0]["password_hash"].encode("utf-8")
+    hashed = result.data[0]["password_hash"].encode("utf-8")
     return bcrypt.checkpw(password.encode("utf-8"), hashed)
 
 # UI Auth
@@ -83,7 +83,10 @@ if not st.session_state["authentifie"]:
     if choix == "Créer un compte":
         if st.sidebar.button("Créer mon compte"):
             if email and password:
-                inscrire_utilisateur(email, password)
+                succes = inscrire_utilisateur(email, password)
+                if succes:
+                    # Optionnel : effacer les champs et/ou informer clairement
+                    st.experimental_rerun()
             else:
                 st.sidebar.warning("Veuillez remplir les deux champs.")
         st.stop()
