@@ -18,10 +18,13 @@ except locale.Error:
     except locale.Error:
         pass
 
-# Installer Playwright browsers
+# Installer Playwright browsers (uniquement chromium, silencieux)
 try:
-    subprocess.run(["playwright", "install"], check=True)
-    st.write("✅ Playwright browsers installés.")
+    subprocess.run(
+        ["playwright", "install", "chromium", "--with-deps"],
+        check=True,
+        capture_output=True
+    )
 except Exception as e:
     st.error(f"Erreur lors de l'installation de Playwright : {e}")
 
@@ -38,7 +41,6 @@ if "authentifie" not in st.session_state:
 def inscrire_utilisateur(email, password):
     hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    # Vérifie si email existe déjà
     exist = supabase.table("users").select("email").eq("email", email).execute()
     error = getattr(exist, 'error', None)
     if error is not None:
@@ -48,7 +50,6 @@ def inscrire_utilisateur(email, password):
         st.sidebar.error("❌ Identifiant déjà pris.")
         return False
 
-    # Insère nouvel utilisateur
     response = supabase.table("users").insert({
         "email": email,
         "password_hash": hashed
